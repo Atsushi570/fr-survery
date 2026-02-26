@@ -1,11 +1,13 @@
 """Evaluation pipeline: compute ROC, AUC, EER, TAR@FAR for face recognition models."""
 
+import time
+
 import numpy as np
 from sklearn.metrics import roc_curve, auc
 from tqdm import tqdm
 
 from .dataset import FacePair
-from .models.base import FaceRecognitionModel, ModelResult
+from .models.base import FaceRecognitionModel, ModelResult, TimingResult
 
 
 def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -41,16 +43,50 @@ def evaluate_model(
     similarities: list[float] = []
     labels: list[int] = []
     num_skipped = 0
+    embedding_times: list[float] = []
+
+    # Warmup: run one embedding to trigger JIT / lazy initialization
+    if pairs:
+        model.get_embedding(pairs[0].img1)
+
+    eval_start = time.perf_counter()
 
     for pair in tqdm(pairs, desc=f"  {model.name}", unit="pair"):
+        t0 = time.perf_counter()
         emb1 = model.get_embedding(pair.img1)
+        t1 = time.perf_counter()
         emb2 = model.get_embedding(pair.img2)
+        t2 = time.perf_counter()
+
         if emb1 is None or emb2 is None:
             num_skipped += 1
             continue
+
+        # Only record times for successful embeddings
+        embedding_times.append(t1 - t0)
+        embedding_times.append(t2 - t1)
+
         sim = _cosine_similarity(emb1, emb2)
         similarities.append(sim)
         labels.append(int(pair.is_same))
+
+    eval_end = time.perf_counter()
+
+    # Build TimingResult
+    timing = TimingResult(
+        total_eval_time_s=eval_end - eval_start,
+        num_timed_embeddings=len(embedding_times),
+    )
+    if embedding_times:
+        times_ms = np.array(embedding_times) * 1000
+        timing.avg_embedding_time_ms = float(np.mean(times_ms))
+        timing.median_embedding_time_ms = float(np.median(times_ms))
+        timing.std_embedding_time_ms = float(np.std(times_ms))
+        num_successful_pairs = len(embedding_times) // 2
+        if num_successful_pairs > 0:
+            timing.avg_pair_time_ms = float(
+                timing.total_eval_time_s * 1000 / num_successful_pairs
+            )
 
     if len(similarities) == 0:
         empty = np.array([])
@@ -61,6 +97,7 @@ def evaluate_model(
             thresholds=empty,
             num_pairs=0,
             num_skipped=num_skipped,
+            timing=timing,
         )
 
     y_true = np.array(labels)
@@ -83,4 +120,5 @@ def evaluate_model(
         tar_at_far_0001=tar_0001,
         num_pairs=len(similarities),
         num_skipped=num_skipped,
+        timing=timing,
     )

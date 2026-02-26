@@ -56,3 +56,52 @@ def plot_roc_curves(results: list[ModelResult], output_dir: Path | None = None) 
     fig.savefig(output_dir / "roc_curves_log.png", dpi=150)
     plt.close(fig)
     print(f"  Saved {output_dir / 'roc_curves_log.png'}")
+
+
+def plot_speed_comparison(
+    results: list[ModelResult], output_dir: Path | None = None
+) -> None:
+    """Plot embedding speed comparison (mean / median) as grouped bar chart."""
+    if output_dir is None:
+        output_dir = _RESULTS_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Filter to results that have timing data
+    timed = [r for r in results if r.timing is not None and r.timing.num_timed_embeddings > 0]
+    if not timed:
+        print("  No timing data available — skipping speed comparison plot.")
+        return
+
+    names = [r.model_name for r in timed]
+    means = [r.timing.avg_embedding_time_ms for r in timed]
+    medians = [r.timing.median_embedding_time_ms for r in timed]
+
+    x = np.arange(len(names))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    bars_mean = ax.bar(x - width / 2, means, width, label="Mean")
+    bars_median = ax.bar(x + width / 2, medians, width, label="Median")
+
+    ax.set_ylabel("Embedding Time (ms)")
+    ax.set_title("Embedding Speed Comparison — Face Recognition Models")
+    ax.set_xticks(x)
+    ax.set_xticklabels(names, rotation=20, ha="right")
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis="y")
+
+    # Add value labels on bars
+    for bar in bars_mean:
+        h = bar.get_height()
+        ax.annotate(f"{h:.1f}", xy=(bar.get_x() + bar.get_width() / 2, h),
+                    xytext=(0, 3), textcoords="offset points", ha="center", fontsize=8)
+    for bar in bars_median:
+        h = bar.get_height()
+        ax.annotate(f"{h:.1f}", xy=(bar.get_x() + bar.get_width() / 2, h),
+                    xytext=(0, 3), textcoords="offset points", ha="center", fontsize=8)
+
+    fig.tight_layout()
+    out_path = output_dir / "speed_comparison.png"
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"  Saved {out_path}")
