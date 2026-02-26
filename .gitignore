@@ -1,0 +1,24 @@
+# Data and model files
+data/
+models/
+results/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/

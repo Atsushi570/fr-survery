@@ -1,0 +1,32 @@
+[project]
+name = "fr-survery"
+version = "0.1.0"
+description = "Face recognition model accuracy benchmark on LFW dataset"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "scikit-learn",
+    "matplotlib",
+    "tqdm",
+    "opencv-python",
+    "insightface",
+    "onnxruntime",
+    "huggingface-hub",
+    "face-recognition",
+    "deepface",
+    "tf-keras",
+    "face-recognition-models",
+    "setuptools<81",
+    "jupyter>=1.1.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fr_survey"]
+
+[tool.uv.sources]
+face-recognition-models = { git = "https://github.com/ageitgey/face_recognition_models" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
