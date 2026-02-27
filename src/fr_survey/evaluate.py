@@ -122,3 +122,47 @@ def evaluate_model(
         num_skipped=num_skipped,
         timing=timing,
     )
+
+
+def compute_metrics_from_similarities(
+    model_name: str,
+    similarities: list[float],
+    labels: list[int],
+) -> ModelResult:
+    """Compute metrics from pre-computed similarity scores and labels.
+
+    Useful for computing per-race metrics without re-running model inference.
+    No timing information is included.
+    """
+    if len(similarities) == 0:
+        empty = np.array([])
+        return ModelResult(
+            model_name=model_name,
+            fpr=empty,
+            tpr=empty,
+            thresholds=empty,
+            num_pairs=0,
+            num_skipped=0,
+        )
+
+    y_true = np.array(labels)
+    y_score = np.array(similarities)
+
+    fpr, tpr, thresholds = roc_curve(y_true, y_score)
+    auc_val = auc(fpr, tpr)
+    eer = _compute_eer(fpr, tpr)
+    tar_001 = _tar_at_far(fpr, tpr, 0.01)
+    tar_0001 = _tar_at_far(fpr, tpr, 0.001)
+
+    return ModelResult(
+        model_name=model_name,
+        fpr=fpr,
+        tpr=tpr,
+        thresholds=thresholds,
+        auc=auc_val,
+        eer=eer,
+        tar_at_far_001=tar_001,
+        tar_at_far_0001=tar_0001,
+        num_pairs=len(similarities),
+        num_skipped=0,
+    )

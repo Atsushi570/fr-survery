@@ -105,3 +105,129 @@ def plot_speed_comparison(
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
     print(f"  Saved {out_path}")
+
+
+def plot_roc_curves_by_race(
+    race_results: dict[str, list[ModelResult]],
+    output_dir: Path | None = None,
+) -> None:
+    """Plot ROC curves per race, with all models overlaid in each subplot.
+
+    Args:
+        race_results: Mapping from race name to list of ModelResult (one per model).
+    """
+    if output_dir is None:
+        output_dir = _RESULTS_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    races = list(race_results.keys())
+    n = len(races)
+    cols = 2
+    rows = (n + 1) // 2
+
+    fig, axes = plt.subplots(rows, cols, figsize=(7 * cols, 6 * rows))
+    axes = np.array(axes).flatten()
+
+    for i, race in enumerate(races):
+        ax = axes[i]
+        for r in race_results[race]:
+            if len(r.fpr) == 0:
+                continue
+            ax.plot(r.fpr, r.tpr, label=f"{r.model_name} (AUC={r.auc:.4f})")
+        ax.plot([0, 1], [0, 1], "k--", alpha=0.3)
+        ax.set_xlabel("False Positive Rate")
+        ax.set_ylabel("True Positive Rate")
+        ax.set_title(f"ROC Curves — {race}")
+        ax.legend(loc="lower right", fontsize=8)
+        ax.grid(True, alpha=0.3)
+
+    # Hide unused subplots
+    for j in range(n, len(axes)):
+        axes[j].set_visible(False)
+
+    fig.tight_layout()
+    out_path = output_dir / "roc_curves_by_race.png"
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"  Saved {out_path}")
+
+
+def plot_race_metric_comparison(
+    race_results: dict[str, list[ModelResult]],
+    output_dir: Path | None = None,
+) -> None:
+    """Plot grouped bar charts comparing AUC and EER across races and models."""
+    if output_dir is None:
+        output_dir = _RESULTS_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    races = list(race_results.keys())
+    # Get model names from the first race's results
+    model_names = [r.model_name for r in race_results[races[0]]]
+
+    x = np.arange(len(races))
+    n_models = len(model_names)
+    width = 0.8 / n_models
+
+    fig, (ax_auc, ax_eer) = plt.subplots(1, 2, figsize=(14, 6))
+
+    # AUC comparison
+    for i, model_name in enumerate(model_names):
+        aucs = []
+        for race in races:
+            match = [r for r in race_results[race] if r.model_name == model_name]
+            aucs.append(match[0].auc if match else 0.0)
+        offset = (i - n_models / 2 + 0.5) * width
+        bars = ax_auc.bar(x + offset, aucs, width, label=model_name)
+        for bar in bars:
+            h = bar.get_height()
+            ax_auc.annotate(
+                f"{h:.3f}",
+                xy=(bar.get_x() + bar.get_width() / 2, h),
+                xytext=(0, 3),
+                textcoords="offset points",
+                ha="center",
+                fontsize=7,
+                rotation=90,
+            )
+
+    ax_auc.set_ylabel("AUC")
+    ax_auc.set_title("AUC by Race")
+    ax_auc.set_xticks(x)
+    ax_auc.set_xticklabels(races)
+    ax_auc.legend(fontsize=8)
+    ax_auc.grid(True, alpha=0.3, axis="y")
+    ax_auc.set_ylim(bottom=0.9)
+
+    # EER comparison
+    for i, model_name in enumerate(model_names):
+        eers = []
+        for race in races:
+            match = [r for r in race_results[race] if r.model_name == model_name]
+            eers.append(match[0].eer if match else 0.0)
+        offset = (i - n_models / 2 + 0.5) * width
+        bars = ax_eer.bar(x + offset, eers, width, label=model_name)
+        for bar in bars:
+            h = bar.get_height()
+            ax_eer.annotate(
+                f"{h:.3f}",
+                xy=(bar.get_x() + bar.get_width() / 2, h),
+                xytext=(0, 3),
+                textcoords="offset points",
+                ha="center",
+                fontsize=7,
+                rotation=90,
+            )
+
+    ax_eer.set_ylabel("EER")
+    ax_eer.set_title("EER by Race")
+    ax_eer.set_xticks(x)
+    ax_eer.set_xticklabels(races)
+    ax_eer.legend(fontsize=8)
+    ax_eer.grid(True, alpha=0.3, axis="y")
+
+    fig.tight_layout()
+    out_path = output_dir / "race_metric_comparison.png"
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"  Saved {out_path}")
