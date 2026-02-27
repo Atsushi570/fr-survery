@@ -11,6 +11,29 @@
 | Dlib ResNet-34 | Public Domain | 128d |
 | DeepFace GhostFaceNet | MIT | 512d |
 
+## パイプライン構成
+
+ベンチマークの公平性を確保するため、顔検出とアライメントを全モデル共通の前処理として統一している。
+
+### 1. 顔検出 — YuNet
+
+共通検出器として [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)（OpenCV Zoo）を使用。軽量なONNXモデルで、各画像から最も信頼度の高い顔を1つ検出し、5点ランドマーク（両目・鼻・両口角）を出力する。
+
+### 2. ランドマークリマップ
+
+YuNetのランドマーク順序 `[right_eye, left_eye, nose, right_mouth, left_mouth]` を insightface標準順 `[left_eye, right_eye, nose, left_mouth, right_mouth]` に並べ替える。
+
+### 3. アライメント — ArcFace標準参照点
+
+insightfaceの `arcface_dst`（112x112用の参照5点座標）に対して `SimilarityTransform`（scikit-image）で変換行列を推定し、`cv2.warpAffine` で顔を正規化する。
+
+- **112x112**: SFace / AuraFace / GhostFaceNet 用
+- **150x150**: Dlib ResNet-34 用（112を基準にスケーリング）
+
+### 4. 特徴抽出
+
+各認識モデルはアライメント済みBGR画像のみを受け取り、embedding を出力する。検出器の違いによる精度差を排除し、純粋な認識モデルの比較が可能。
+
 ## セットアップ
 
 ```bash

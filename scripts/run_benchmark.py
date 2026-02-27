@@ -12,6 +12,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fr_survey.dataset import load_lfw_pairs, load_rfw_pairs, RFW_RACES
+from fr_survey.detector import YuNetDetector
 from fr_survey.evaluate import evaluate_model
 from fr_survey.models.base import FaceRecognitionModel, ModelResult, TimingResult
 from fr_survey.models.opencv_sface import OpenCVSFace
@@ -64,9 +65,9 @@ def _build_models() -> list[FaceRecognitionModel]:
 
 
 def _result_path(model_name: str) -> Path:
-    """Per-model result JSON path."""
+    """Per-model result JSON path (unified detector)."""
     safe_name = model_name.replace(" ", "_").lower()
-    return RESULTS_DIR / f"{safe_name}.json"
+    return RESULTS_DIR / f"{safe_name}_unified.json"
 
 
 def _save_model_result(result: ModelResult) -> None:
@@ -170,10 +171,10 @@ def _save_combined_results(results: list[ModelResult]) -> None:
 
 
 def _rfw_result_path(race: str, model_name: str) -> Path:
-    """Per-race per-model result JSON path."""
+    """Per-race per-model result JSON path (unified detector)."""
     safe_name = model_name.replace(" ", "_").lower()
     safe_race = race.lower()
-    return RESULTS_DIR / f"rfw_{safe_race}_{safe_name}.json"
+    return RESULTS_DIR / f"rfw_{safe_race}_{safe_name}_unified.json"
 
 
 def _save_rfw_result(race: str, result: ModelResult) -> None:
@@ -297,6 +298,12 @@ def main() -> None:
     args = _parse_args()
     use_cache = not args.force and args.max_pairs is None
 
+    # Initialize shared YuNet detector
+    print("Setting up shared YuNet detector ...")
+    detector = YuNetDetector()
+    detector.setup()
+    print("  YuNet detector ready.\n")
+
     models = _build_models()
     results: list[ModelResult] = []
     need_eval = False
@@ -336,7 +343,7 @@ def main() -> None:
                 results[i] = None
                 continue
             print(f"Evaluating {model.name} ...")
-            result = evaluate_model(model, pairs)
+            result = evaluate_model(model, pairs, detector)
             # Record setup time in the timing result
             if result.timing is not None:
                 result.timing.setup_time_s = setup_time
@@ -351,9 +358,8 @@ def main() -> None:
     # Filter out skipped models
     results = [r for r in results if isinstance(r, ModelResult)]
 
-    if use_cache:
-        print("Saving combined results ...")
-        _save_combined_results(results)
+    print("Saving combined results ...")
+    _save_combined_results(results)
 
     print("Plotting ROC curves ...")
     plot_roc_curves(results)
@@ -416,7 +422,7 @@ def main() -> None:
                     continue
 
                 print(f"Evaluating {model.name} on {race} ...")
-                result = evaluate_model(model, race_pairs)
+                result = evaluate_model(model, race_pairs, detector)
                 if use_rfw_cache:
                     _save_rfw_result(race, result)
                 race_results[race].append(result)

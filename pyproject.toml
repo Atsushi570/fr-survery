@@ -17,6 +17,7 @@ dependencies = [
     "deepface",
     "tf-keras",
     "face-recognition-models",
+    "scikit-image",
     "setuptools<81",
     "jupyter>=1.1.1",
 ]

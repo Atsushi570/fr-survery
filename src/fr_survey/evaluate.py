@@ -1,5 +1,7 @@
 """Evaluation pipeline: compute ROC, AUC, EER, TAR@FAR for face recognition models."""
 
+from __future__ import annotations
+
 import time
 
 import numpy as np
@@ -7,6 +9,7 @@ from sklearn.metrics import roc_curve, auc
 from tqdm import tqdm
 
 from .dataset import FacePair
+from .detector import YuNetDetector
 from .models.base import FaceRecognitionModel, ModelResult, TimingResult
 
 
@@ -21,8 +24,10 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 def _compute_eer(fpr: np.ndarray, tpr: np.ndarray) -> float:
     """Compute Equal Error Rate from ROC curve."""
     fnr = 1 - tpr
-    # Find the point where FPR and FNR are closest
-    idx = np.nanargmin(np.abs(fnr - fpr))
+    diff = np.abs(fnr - fpr)
+    if len(diff) == 0 or np.all(np.isnan(diff)):
+        return float("nan")
+    idx = np.nanargmin(diff)
     return float((fpr[idx] + fnr[idx]) / 2)
 
 
@@ -35,9 +40,27 @@ def _tar_at_far(fpr: np.ndarray, tpr: np.ndarray, target_far: float) -> float:
     return float(tpr[valid][-1])
 
 
+def _detect_and_extract(
+    detector: YuNetDetector,
+    model: FaceRecognitionModel,
+    image_rgb: np.ndarray,
+) -> np.ndarray | None:
+    """Run shared detection then model-specific embedding extraction."""
+    result = detector.detect(image_rgb)
+    if result is None:
+        return None
+    # Select the aligned crop matching the model's expected input size
+    if model.aligned_input_size == 150:
+        aligned = result.aligned_150
+    else:
+        aligned = result.aligned_112
+    return model.get_embedding(aligned)
+
+
 def evaluate_model(
     model: FaceRecognitionModel,
     pairs: list[FacePair],
+    detector: YuNetDetector,
 ) -> ModelResult:
     """Run a face recognition model on all pairs and compute metrics."""
     similarities: list[float] = []
@@ -47,15 +70,15 @@ def evaluate_model(
 
     # Warmup: run one embedding to trigger JIT / lazy initialization
     if pairs:
-        model.get_embedding(pairs[0].img1)
+        _detect_and_extract(detector, model, pairs[0].img1)
 
     eval_start = time.perf_counter()
 
     for pair in tqdm(pairs, desc=f"  {model.name}", unit="pair"):
         t0 = time.perf_counter()
-        emb1 = model.get_embedding(pair.img1)
+        emb1 = _detect_and_extract(detector, model, pair.img1)
         t1 = time.perf_counter()
-        emb2 = model.get_embedding(pair.img2)
+        emb2 = _detect_and_extract(detector, model, pair.img2)
         t2 = time.perf_counter()
 
         if emb1 is None or emb2 is None:
